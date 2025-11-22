@@ -4,14 +4,10 @@ import pino from 'pino';
 
 const logger = pino();
 
-/**
- * BullMQ connection with proper settings for production.
- * maxRetriesPerRequest: null ensures connection pooling works correctly with BullMQ v4.
- */
 export const redisConnection = new IORedis({
   host: process.env.REDIS_HOST || '127.0.0.1',
   port: parseInt(process.env.REDIS_PORT || '6379', 10),
-  maxRetriesPerRequest: null, // Critical for BullMQ v4
+  maxRetriesPerRequest: null,
   enableReadyCheck: false,
   lazyConnect: false,
 });
@@ -33,10 +29,6 @@ redisConnection.on('close', () => {
   logger.warn('Redis connection closed for queue');
 });
 
-/**
- * Order queue instance using BullMQ.
- * Uses the same connection as above.
- */
 export const orderQueue = new Queue('orders', {
   connection: redisConnection,
   defaultJobOptions: {
@@ -54,10 +46,6 @@ export const orderQueue = new Queue('orders', {
   },
 });
 
-/**
- * Enqueues an order for processing.
- * Returns a Job instance with the job ID.
- */
 export async function enqueueOrder(data: {
   orderId: string;
   orderType?: string;
@@ -82,23 +70,14 @@ export async function enqueueOrder(data: {
   }
 }
 
-/**
- * Get the Redis connection for external use (e.g., Pub/Sub, event listeners).
- */
 export function getRedisConnection() {
   return redisConnection;
 }
 
-/**
- * Get the order queue for external use (e.g., event listeners).
- */
 export function getOrderQueue() {
   return orderQueue;
 }
 
-/**
- * Gracefully close the queue and connection.
- */
 export async function closeQueue() {
   try {
     await orderQueue.close();

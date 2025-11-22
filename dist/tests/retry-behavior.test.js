@@ -1,6 +1,5 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-// Test that executeSwap with multiple attempts can sometimes succeed and sometimes fail
 const mockDexRouter_1 = require("../services/mockDexRouter");
 describe('Retry Behavior', () => {
     test('executeSwap can succeed on multiple attempts', async () => {
@@ -12,10 +11,8 @@ describe('Retry Behavior', () => {
                 successCount++;
             }
             catch (err) {
-                // expected transient failures
             }
         }
-        // with 8% failure rate, expect most to succeed
         expect(successCount).toBeGreaterThan(10);
     }, 45000);
     test('executeSwap transient errors are marked as transient', async () => {
@@ -31,7 +28,6 @@ describe('Retry Behavior', () => {
                 }
             }
         }
-        // should see at least one transient error in 20 attempts (8% failure = expect ~2)
         expect(transientErrorCount).toBeGreaterThanOrEqual(0);
     }, 45000);
 });

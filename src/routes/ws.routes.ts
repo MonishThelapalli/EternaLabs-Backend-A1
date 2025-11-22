@@ -5,39 +5,16 @@ import { wsManager } from '../services/websocket-manager';
 
 const logger = pino();
 
-/**
- * WebSocket Routes for Order Status Updates
- *
- * Endpoint: ws://localhost:3000/ws/orders
- *
- * Protocol:
- * 1. Connect to ws://localhost:3000/ws/orders
- * 2. Send: { "action": "subscribe", "orderId": "uuid" }
- * 3. Receive: Real-time order updates { "type": "routing", "status": "routing", "progress": 10, ... }
- *
- * This route provides:
- * - Alternative to /api/orders/status/:orderId upgrade path
- * - JSON-based subscription protocol
- * - Multiple order subscriptions per connection
- */
-
 export function setupWebSocketRoutes(wss: WebSocket.Server) {
-  /**
-   * Handle new WebSocket connections on /ws/orders
-   */
   wss.on('connection', (ws: WebSocket, request: http.IncomingMessage) => {
     const clientId = require('uuid').v4();
-    const subscriptions = new Set<string>(); // Track which orders this client is subscribed to
+    const subscriptions = new Set<string>();
 
     logger.info(
       { clientId, url: request.url, remoteAddress: request.socket.remoteAddress },
       'New WebSocket connection'
     );
 
-    /**
-     * Send a message to the WebSocket client.
-     * Safely handles closed connections.
-     */
     const send = (message: Record<string, any>) => {
       if (ws.readyState === WebSocket.OPEN) {
         try {
@@ -52,9 +29,6 @@ export function setupWebSocketRoutes(wss: WebSocket.Server) {
       }
     };
 
-    /**
-     * Send initial connection confirmation
-     */
     send({
       type: 'connection',
       clientId,
@@ -66,9 +40,6 @@ export function setupWebSocketRoutes(wss: WebSocket.Server) {
       },
     });
 
-    /**
-     * Handle incoming messages
-     */
     ws.on('message', (data: WebSocket.Data) => {
       try {
         const message = JSON.parse(data.toString());
@@ -79,18 +50,16 @@ export function setupWebSocketRoutes(wss: WebSocket.Server) {
           'WebSocket message received'
         );
 
-        // Validate action
         if (!action) {
           send({
             type: 'error',
             error: 'Invalid message',
             details: 'action field is required',
-            timestamp: new Date().toISOString(),
-          });
-          return;
+          timestamp: new Date().toISOString(),
+        });
+        return;
         }
 
-        // Handle subscribe action
         if (action === 'subscribe') {
           if (!orderId || typeof orderId !== 'string' || !orderId.trim()) {
             send({
@@ -118,7 +87,6 @@ export function setupWebSocketRoutes(wss: WebSocket.Server) {
             timestamp: new Date().toISOString(),
           });
         }
-        // Handle unsubscribe action
         else if (action === 'unsubscribe') {
           if (!orderId || typeof orderId !== 'string' || !orderId.trim()) {
             send({
@@ -145,7 +113,6 @@ export function setupWebSocketRoutes(wss: WebSocket.Server) {
             timestamp: new Date().toISOString(),
           });
         }
-        // Handle unknown action
         else {
           send({
             type: 'error',
@@ -165,25 +132,18 @@ export function setupWebSocketRoutes(wss: WebSocket.Server) {
       }
     });
 
-    /**
-     * Handle WebSocket close
-     */
     ws.on('close', (code: number, reason: string) => {
       logger.info(
         { clientId, code, reason, subscriptionCount: subscriptions.size },
         'WebSocket connection closed'
       );
 
-      // Unregister from all subscriptions
       subscriptions.forEach((orderId) => {
         wsManager.unregister(orderId, ws);
       });
       subscriptions.clear();
     });
 
-    /**
-     * Handle WebSocket errors
-     */
     ws.on('error', (err: Error) => {
       logger.error(
         { err, clientId, subscriptionCount: subscriptions.size },
@@ -191,24 +151,16 @@ export function setupWebSocketRoutes(wss: WebSocket.Server) {
       );
     });
 
-    /**
-     * Handle pong messages (keep-alive)
-     */
     ws.on('pong', () => {
       logger.debug({ clientId }, 'Pong received from client');
     });
   });
 }
 
-/**
- * Middleware to handle WebSocket upgrade requests
- * Attach to Express server for /ws/orders path
- */
 export function createWebSocketUpgradeHandler(wss: WebSocket.Server) {
   return (request: http.IncomingMessage, socket: any, head: Buffer) => {
     const url = request.url || '';
 
-    // Only handle /ws/orders path
     if (url === '/ws/orders' || url.startsWith('/ws/orders?')) {
       logger.debug({ url }, 'Upgrading connection to WebSocket');
       wss.handleUpgrade(request, socket, head, (ws) => {

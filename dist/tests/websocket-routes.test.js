@@ -12,27 +12,17 @@ const uuid_1 = require("uuid");
 const ws_routes_1 = __importDefault(require("../routes/ws.routes"));
 const websocket_manager_1 = require("../services/websocket-manager");
 const logger = (0, pino_1.default)();
-/**
- * WebSocket Integration Tests
- *
- * Tests the new /ws/orders endpoint with JSON-based subscription protocol
- */
 describe('WebSocket /ws/orders Endpoint', () => {
     let server;
     let wss;
     const PORT = 9999;
     const WS_URL = `ws://localhost:${PORT}/ws/orders`;
-    /**
-     * Setup test server before all tests
-     */
     beforeAll((done) => {
         const app = (0, express_1.default)();
         app.use(body_parser_1.default.json());
         server = http_1.default.createServer(app);
         wss = new ws_1.default.Server({ noServer: true });
-        // Setup WebSocket routes
         (0, ws_routes_1.default)(wss);
-        // Handle upgrades
         server.on('upgrade', (request, socket, head) => {
             const { url = '' } = request;
             if (url === '/ws/orders' || url.startsWith('/ws/orders?')) {
@@ -49,18 +39,12 @@ describe('WebSocket /ws/orders Endpoint', () => {
             done();
         });
     });
-    /**
-     * Close server after all tests
-     */
     afterAll((done) => {
         server.close(() => {
             logger.info('Test server closed');
             done();
         });
     });
-    /**
-     * Test 1: WebSocket Handshake and Connection
-     */
     it('should successfully establish WebSocket connection', (done) => {
         const ws = new ws_1.default(WS_URL);
         ws.on('open', () => {
@@ -72,9 +56,6 @@ describe('WebSocket /ws/orders Endpoint', () => {
             done(err);
         });
     });
-    /**
-     * Test 2: Receive Connection Confirmation
-     */
     it('should send connection confirmation on connect', (done) => {
         const ws = new ws_1.default(WS_URL);
         ws.on('message', (data) => {
@@ -94,9 +75,6 @@ describe('WebSocket /ws/orders Endpoint', () => {
             done(err);
         });
     });
-    /**
-     * Test 3: Subscribe to Order with Valid orderId
-     */
     it('should accept subscription with valid orderId', (done) => {
         const ws = new ws_1.default(WS_URL);
         const orderId = (0, uuid_1.v4)();
@@ -111,7 +89,6 @@ describe('WebSocket /ws/orders Endpoint', () => {
                     // Send subscription
                     ws.send(JSON.stringify({ action: 'subscribe', orderId }));
                 }
-                // Second message is subscription confirmation
                 else if (messageCount === 2) {
                     expect(message.type).toBe('subscribed');
                     expect(message.orderId).toBe(orderId);
@@ -128,9 +105,6 @@ describe('WebSocket /ws/orders Endpoint', () => {
             done(err);
         });
     });
-    /**
-     * Test 4: Reject Subscription Without orderId
-     */
     it('should reject subscription without orderId', (done) => {
         const ws = new ws_1.default(WS_URL);
         let messageCount = 0;
@@ -139,7 +113,6 @@ describe('WebSocket /ws/orders Endpoint', () => {
                 const message = JSON.parse(data.toString());
                 messageCount++;
                 if (messageCount === 1) {
-                    // Send invalid subscription (no orderId)
                     ws.send(JSON.stringify({ action: 'subscribe' }));
                 }
                 else if (messageCount === 2) {
@@ -158,9 +131,6 @@ describe('WebSocket /ws/orders Endpoint', () => {
             done(err);
         });
     });
-    /**
-     * Test 5: Reject Empty or Invalid JSON
-     */
     it('should handle invalid JSON gracefully', (done) => {
         const ws = new ws_1.default(WS_URL);
         let messageCount = 0;
@@ -169,7 +139,6 @@ describe('WebSocket /ws/orders Endpoint', () => {
                 const message = JSON.parse(data.toString());
                 messageCount++;
                 if (messageCount === 1) {
-                    // Send invalid JSON
                     ws.send('{ invalid json }');
                 }
                 else if (messageCount === 2) {
@@ -187,9 +156,6 @@ describe('WebSocket /ws/orders Endpoint', () => {
             done(err);
         });
     });
-    /**
-     * Test 6: Reject Unknown Action
-     */
     it('should reject unknown action', (done) => {
         const ws = new ws_1.default(WS_URL);
         let messageCount = 0;
@@ -198,7 +164,6 @@ describe('WebSocket /ws/orders Endpoint', () => {
                 const message = JSON.parse(data.toString());
                 messageCount++;
                 if (messageCount === 1) {
-                    // Send unknown action
                     ws.send(JSON.stringify({ action: 'unknown-action', orderId: 'test' }));
                 }
                 else if (messageCount === 2) {
@@ -216,9 +181,6 @@ describe('WebSocket /ws/orders Endpoint', () => {
             done(err);
         });
     });
-    /**
-     * Test 7: Unsubscribe from Order
-     */
     it('should handle unsubscribe action', (done) => {
         const ws = new ws_1.default(WS_URL);
         const orderId = (0, uuid_1.v4)();
@@ -232,12 +194,10 @@ describe('WebSocket /ws/orders Endpoint', () => {
                     ws.send(JSON.stringify({ action: 'subscribe', orderId }));
                 }
                 else if (messageCount === 2) {
-                    // Subscription confirmation
                     expect(message.type).toBe('subscribed');
                     ws.send(JSON.stringify({ action: 'unsubscribe', orderId }));
                 }
                 else if (messageCount === 3) {
-                    // Unsubscription confirmation
                     expect(message.type).toBe('unsubscribed');
                     expect(message.orderId).toBe(orderId);
                     ws.close();
@@ -252,9 +212,6 @@ describe('WebSocket /ws/orders Endpoint', () => {
             done(err);
         });
     });
-    /**
-     * Test 8: Multiple Subscriptions on Single Connection
-     */
     it('should support multiple subscriptions on same connection', (done) => {
         const ws = new ws_1.default(WS_URL);
         const orderId1 = (0, uuid_1.v4)();
@@ -265,17 +222,14 @@ describe('WebSocket /ws/orders Endpoint', () => {
                 const message = JSON.parse(data.toString());
                 messageCount++;
                 if (messageCount === 1) {
-                    // Connection confirmation
                     ws.send(JSON.stringify({ action: 'subscribe', orderId: orderId1 }));
                 }
                 else if (messageCount === 2) {
-                    // First subscription confirmation
                     expect(message.type).toBe('subscribed');
                     expect(message.orderId).toBe(orderId1);
                     ws.send(JSON.stringify({ action: 'subscribe', orderId: orderId2 }));
                 }
                 else if (messageCount === 3) {
-                    // Second subscription confirmation
                     expect(message.type).toBe('subscribed');
                     expect(message.orderId).toBe(orderId2);
                     ws.close();
@@ -290,9 +244,6 @@ describe('WebSocket /ws/orders Endpoint', () => {
             done(err);
         });
     });
-    /**
-     * Test 9: Connection Closure Cleanup
-     */
     it('should clean up subscriptions on connection close', (done) => {
         const ws = new ws_1.default(WS_URL);
         const orderId = (0, uuid_1.v4)();
@@ -314,7 +265,6 @@ describe('WebSocket /ws/orders Endpoint', () => {
             }
         });
         ws.on('close', () => {
-            // Verify cleanup
             expect(websocket_manager_1.wsManager.getTotalClientCount()).toBeGreaterThanOrEqual(0);
             done();
         });
@@ -322,9 +272,6 @@ describe('WebSocket /ws/orders Endpoint', () => {
             done(err);
         });
     });
-    /**
-     * Test 10: Receive Order Update from WebSocket Manager
-     */
     it('should forward order updates to subscribed clients', (done) => {
         const ws = new ws_1.default(WS_URL);
         const orderId = (0, uuid_1.v4)();
@@ -338,9 +285,7 @@ describe('WebSocket /ws/orders Endpoint', () => {
                     ws.send(JSON.stringify({ action: 'subscribe', orderId }));
                 }
                 else if (messageCount === 2) {
-                    // Subscription confirmation
                     expect(message.type).toBe('subscribed');
-                    // Simulate order update from worker
                     websocket_manager_1.wsManager.sendToOrder(orderId, {
                         type: 'routing',
                         orderId,
@@ -351,7 +296,6 @@ describe('WebSocket /ws/orders Endpoint', () => {
                     });
                 }
                 else if (messageCount === 3) {
-                    // Order update message
                     expect(message.type).toBe('routing');
                     expect(message.orderId).toBe(orderId);
                     expect(message.status).toBe('routing');
@@ -367,13 +311,9 @@ describe('WebSocket /ws/orders Endpoint', () => {
         ws.on('error', (err) => {
             done(err);
         });
-        // Give message handlers time to process
         setTimeout(() => { }, 100);
     });
 });
-/**
- * WebSocket Message Protocol Tests
- */
 describe('WebSocket Message Protocol', () => {
     let server;
     let wss;
@@ -401,9 +341,6 @@ describe('WebSocket Message Protocol', () => {
     afterAll((done) => {
         server.close(done);
     });
-    /**
-     * Test: Expected Message Format
-     */
     it('should format subscription confirmation correctly', (done) => {
         const ws = new ws_1.default(WS_URL);
         const orderId = 'test-order-123';
@@ -413,7 +350,6 @@ describe('WebSocket Message Protocol', () => {
                 const message = JSON.parse(data.toString());
                 messageCount++;
                 if (messageCount === 1) {
-                    // Verify connection message format
                     expect(message).toHaveProperty('type', 'connection');
                     expect(message).toHaveProperty('clientId');
                     expect(message).toHaveProperty('message');
@@ -422,7 +358,6 @@ describe('WebSocket Message Protocol', () => {
                     ws.send(JSON.stringify({ action: 'subscribe', orderId }));
                 }
                 else if (messageCount === 2) {
-                    // Verify subscription confirmation format
                     expect(message).toHaveProperty('type', 'subscribed');
                     expect(message).toHaveProperty('orderId', orderId);
                     expect(message).toHaveProperty('clientId');
@@ -438,9 +373,6 @@ describe('WebSocket Message Protocol', () => {
         });
         ws.on('error', done);
     });
-    /**
-     * Test: Error Message Format
-     */
     it('should format error messages correctly', (done) => {
         const ws = new ws_1.default(WS_URL);
         let messageCount = 0;
@@ -449,7 +381,7 @@ describe('WebSocket Message Protocol', () => {
                 const message = JSON.parse(data.toString());
                 messageCount++;
                 if (messageCount === 1) {
-                    ws.send(JSON.stringify({ action: 'subscribe' })); // Missing orderId
+                    ws.send(JSON.stringify({ action: 'subscribe' }));
                 }
                 else if (messageCount === 2) {
                     expect(message).toHaveProperty('type', 'error');

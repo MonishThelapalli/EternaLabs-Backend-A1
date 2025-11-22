@@ -10,16 +10,8 @@ import { initializeQueueEventsManager } from '../services/queue-events';
 
 const logger = pino();
 
-/**
- * Publisher instance for Redis Pub/Sub.
- * Reuses the connection from queue/index to avoid connection exhaustion.
- */
 const publisher = redisConnection;
 
-/**
- * Helper to publish progress or status updates via Redis Pub/Sub.
- * This is used both in the job processor and monitored externally.
- */
 export async function publishOrderUpdate(
   orderId: string,
   type: string,
@@ -41,11 +33,6 @@ export async function publishOrderUpdate(
   }
 }
 
-/**
- * Main order processing logic.
- * Handles routing, quoting, and execution with retries.
- * Reports progress via job.progress() and publishes status via Redis Pub/Sub.
- */
 export async function processOrder(job: Job<{
   orderId: string;
   orderType?: string;
@@ -59,7 +46,6 @@ export async function processOrder(job: Job<{
 
   logger.info({ jobId: job.id, orderId: data.orderId }, 'Processing order');
 
-  // Fetch or create order
   let order = await orderRepo.findOneBy({ id: data.orderId });
   if (!order) {
     order = orderRepo.create({
@@ -74,9 +60,6 @@ export async function processOrder(job: Job<{
     await orderRepo.save(order);
   }
 
-  /**
-   * Helper to update order status, report progress, and publish via Pub/Sub.
-   */
   const updateOrderStatus = async (
     status: string,
     progress: number = 0,
@@ -85,8 +68,6 @@ export async function processOrder(job: Job<{
     order.status = status as any;
     await orderRepo.save(order);
 
-    // Report progress to BullMQ with full context
-    // This triggers the 'progress' event which is listened to by QueueEvents
     try {
       await job.updateProgress({
         orderId: data.orderId,
@@ -101,7 +82,6 @@ export async function processOrder(job: Job<{
       logger.error({ err }, '❌ Failed to update BullMQ job progress');
     }
 
-    // Also publish via Pub/Sub for immediate delivery (backup)
     await publishOrderUpdate(order.id, status, {
       progress,
       ...payload,
@@ -109,13 +89,11 @@ export async function processOrder(job: Job<{
   };
 
   try {
-    // Step 1: Routing - determine which DEX to use
     logger.info({ orderId: data.orderId }, 'Starting routing phase');
     await updateOrderStatus('routing', 10, {
       message: 'Fetching quotes from multiple DEXs...',
     });
 
-    // Get quotes from both DEXs in parallel
     const amountNum = Number(data.amount);
     const dexes: DexName[] = ['raydium', 'meteora'];
 
@@ -135,7 +113,6 @@ export async function processOrder(job: Job<{
       quotesFetched: quotes.length,
     });
 
-    // Select best quote
     const validQuotes = quotes.filter((q) => q.amountOut !== '0');
     if (validQuotes.length === 0) {
       throw new Error('No valid quotes received from any DEX');
@@ -157,20 +134,18 @@ export async function processOrder(job: Job<{
       'Best quote selected'
     );
 
-    // Step 2: Building - prepare transaction
     await updateOrderStatus('building', 50, {
       message: `Building transaction on ${best.dex}...`,
       chosenDex: best.dex,
       quote: best,
     });
 
-    await sleep(500); // Simulate transaction building time
+    await sleep(500);
 
     await updateOrderStatus('building', 70, {
       message: 'Transaction built, ready to submit',
     });
 
-    // Step 3: Submission - attempt execution with retries
     let attempt = 0;
     const maxAttempts = 3;
 
@@ -200,7 +175,6 @@ export async function processOrder(job: Job<{
           amountNum
         );
 
-        // Success
         order.txHash = result.txHash;
         order.status = 'confirmed';
         await orderRepo.save(order);
@@ -210,7 +184,6 @@ export async function processOrder(job: Job<{
           'Order confirmed'
         );
 
-        // Final success message
         await updateOrderStatus('confirmed', 100, {
           message: 'Order successfully executed',
           txHash: result.txHash,
@@ -238,7 +211,6 @@ export async function processOrder(job: Job<{
           'Execution attempt failed'
         );
 
-        // Publish failure with retry info
         await publishOrderUpdate(order.id, 'execution-failed', {
           message: `Attempt ${attempt} failed: ${order.lastError}`,
           attempt,
@@ -248,7 +220,6 @@ export async function processOrder(job: Job<{
           error: order.lastError,
         });
 
-        // If not transient or max attempts reached, fail permanently
         if (!isTransient || attempt >= maxAttempts) {
           order.status = 'failed';
           await orderRepo.save(order);
@@ -263,7 +234,6 @@ export async function processOrder(job: Job<{
             'Order failed permanently'
           );
 
-          // Publish final failure
           await updateOrderStatus('failed', 0, {
             message: `Order processing failed: ${order.lastError}`,
             final: true,
@@ -278,7 +248,6 @@ export async function processOrder(job: Job<{
           };
         }
 
-        // Backoff before retry
         const delay = exponentialBackoffMs(attempt);
         logger.debug(
           { delay, nextAttempt: attempt + 1, orderId: order.id },
@@ -295,7 +264,6 @@ export async function processOrder(job: Job<{
       }
     }
 
-    // Fallback: should not reach here, but handle just in case
     order.status = 'failed';
     order.lastError = 'Max attempts exceeded';
     await orderRepo.save(order);
@@ -331,20 +299,14 @@ export async function processOrder(job: Job<{
   }
 }
 
-/**
- * Worker initialization and startup.
- * Only starts if this is the main module or START_WORKER is set.
- */
 if (require.main === module || process.env.START_WORKER === 'true') {
   (async () => {
     try {
-      // Initialize database first
       if (!AppDataSource.isInitialized) {
         await AppDataSource.initialize();
         logger.info('Database initialized');
       }
 
-      // Verify Redis connection
       try {
         await redisConnection.ping();
         logger.info('Redis connection verified');
@@ -353,7 +315,6 @@ if (require.main === module || process.env.START_WORKER === 'true') {
         process.exit(1);
       }
 
-      // Create worker
       const worker = new Worker(
         'orders',
         async (job: Job) => {
@@ -365,7 +326,6 @@ if (require.main === module || process.env.START_WORKER === 'true') {
         }
       );
 
-      // Worker event handlers
       worker.on('completed', (job, result) => {
         logger.info(
           { jobId: job?.id, orderId: job?.data?.orderId, result },
@@ -384,7 +344,6 @@ if (require.main === module || process.env.START_WORKER === 'true') {
         logger.error({ err }, 'Worker error');
       });
 
-      // Initialize Queue Events Manager for publishing BullMQ events
       logger.info('Initializing Queue Events Manager');
       const queueEventsManager = initializeQueueEventsManager(redisConnection);
       const queue = getOrderQueue();
@@ -392,7 +351,6 @@ if (require.main === module || process.env.START_WORKER === 'true') {
       queueEventsManager.attachToWorker(worker, 'orders');
       logger.info('Queue Events Manager initialized and attached');
 
-      // Graceful shutdown
       process.on('SIGTERM', async () => {
         logger.info('SIGTERM received, shutting down worker');
         await worker.close();

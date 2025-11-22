@@ -8,16 +8,10 @@ import { Order } from '../models/order.entity';
 const logger = pino();
 const router = express.Router();
 
-/**
- * POST /execute
- * Creates an order and enqueues it for processing.
- * Returns orderId and WebSocket URL for real-time updates.
- */
 router.post('/execute', async (req: Request, res: Response) => {
   try {
     const { orderType, tokenIn, tokenOut, amount, slippage } = req.body;
 
-    // Validation
     if (!tokenIn || !tokenOut || !amount) {
       return res.status(400).json({
         error: 'Bad Request',
@@ -35,7 +29,6 @@ router.post('/execute', async (req: Request, res: Response) => {
     const orderId = uuidv4();
     const orderRepo = AppDataSource.getRepository(Order);
 
-    // Create order in database
     const order = orderRepo.create({
       id: orderId,
       orderType: orderType || 'market',
@@ -49,7 +42,6 @@ router.post('/execute', async (req: Request, res: Response) => {
     await orderRepo.save(order);
     logger.info({ orderId, tokenIn, tokenOut, amount }, 'Order created');
 
-    // Enqueue for processing
     try {
       const job = await enqueueOrder({
         orderId,
@@ -62,7 +54,6 @@ router.post('/execute', async (req: Request, res: Response) => {
 
       logger.info({ orderId, jobId: job.id }, 'Order enqueued');
 
-      // Build WebSocket URL for real-time status updates
       const host = req.get('host') || 'localhost:3000';
       const protocol = req.protocol === 'https' ? 'wss' : 'ws';
       const wsUrl = `${protocol}://${host}/api/orders/status/${orderId}`;
@@ -98,14 +89,6 @@ router.post('/execute', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * GET /status/:orderId
- * Retrieves the current status of an order (REST endpoint).
- * 
- * NOTE: This is a REST endpoint that returns JSON.
- * To receive real-time updates, upgrade to WebSocket using the same URL path.
- * The HTTP server will automatically upgrade the connection when it's a WebSocket upgrade request.
- */
 router.get('/status/:orderId', async (req: Request, res: Response) => {
   try {
     const { orderId } = req.params;

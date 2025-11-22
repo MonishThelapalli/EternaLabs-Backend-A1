@@ -9,24 +9,10 @@ exports.getQueueEventsManager = getQueueEventsManager;
 const ioredis_1 = __importDefault(require("ioredis"));
 const pino_1 = __importDefault(require("pino"));
 const logger = (0, pino_1.default)();
-/**
- * Queue Events Manager
- *
- * Listens to BullMQ job events and publishes them via Redis Pub/Sub
- * so that WebSocket clients can receive real-time updates.
- *
- * Events handled via Worker:
- * - completed
- * - failed
- *
- * Events handled via direct Pub/Sub in job processor:
- * - routing, building, submitted, confirmed
- */
 class QueueEventsManager {
     constructor(redisConnection) {
         this.eventListeners = new Map();
         this.redisConnection = redisConnection;
-        // Use a separate publisher connection to avoid blocking
         this.publisher = new ioredis_1.default({
             host: redisConnection.options.host || '127.0.0.1',
             port: redisConnection.options.port || 6379,
@@ -38,19 +24,9 @@ class QueueEventsManager {
             logger.error({ err }, 'QueueEventsManager publisher error');
         });
     }
-    /**
-     * Attach event listeners to a queue.
-     * Since QueueEvents is complex with type issues, we mainly rely on Worker events.
-     */
     attachToQueue(queue, queueName = 'orders') {
         logger.info({ queueName }, 'Attaching queue listeners');
-        // Queue events are primarily handled via Worker and job processor
     }
-    /**
-     * Attach event listeners to a worker.
-     * Alternative approach: listen on the worker itself rather than the queue.
-     * This is useful when worker and server are running separately.
-     */
     attachToWorker(worker, queueName = 'orders') {
         logger.info({ queueName }, 'Attaching worker event listeners');
         const onCompleted = (job, result, prev) => {
@@ -73,10 +49,6 @@ class QueueEventsManager {
         worker.on('failed', onFailed);
         logger.debug({ queueName }, 'Worker event listeners attached');
     }
-    /**
-     * Publish a job event to Redis Pub/Sub.
-     * Extracts orderId from job data and publishes to order-specific channel.
-     */
     publishJobEvent(jobId, orderId, eventType, payload = {}) {
         try {
             if (!orderId) {
@@ -104,9 +76,6 @@ class QueueEventsManager {
             logger.error({ err }, 'Error publishing job event');
         }
     }
-    /**
-     * Clean up resources.
-     */
     async cleanup() {
         logger.info('Cleaning up QueueEventsManager');
         this.eventListeners.clear();
@@ -114,7 +83,6 @@ class QueueEventsManager {
     }
 }
 exports.QueueEventsManager = QueueEventsManager;
-// Singleton instance (initialized in server.ts)
 let instance = null;
 function initializeQueueEventsManager(redisConnection) {
     if (!instance) {

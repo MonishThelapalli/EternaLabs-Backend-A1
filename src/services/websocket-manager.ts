@@ -3,23 +3,9 @@ import pino from 'pino';
 
 const logger = pino();
 
-/**
- * WebSocket Manager
- *
- * Maintains a registry of WebSocket connections keyed by orderId.
- * Provides methods to:
- * - Register new connections
- * - Send messages to specific orders
- * - Broadcast to all connections
- * - Clean up closed connections
- */
 export class WebSocketManager {
   private connections: Map<string, Set<WebSocket>> = new Map();
 
-  /**
-   * Register a new WebSocket connection for an order.
-   * Multiple clients can connect to the same order.
-   */
   public register(orderId: string, ws: WebSocket): void {
     if (!this.connections.has(orderId)) {
       this.connections.set(orderId, new Set());
@@ -36,7 +22,6 @@ export class WebSocketManager {
       'WebSocket client registered'
     );
 
-    // Send connection acknowledgment
     this.sendToOrder(orderId, {
       type: 'connection',
       message: 'Connected to order status stream',
@@ -44,7 +29,6 @@ export class WebSocketManager {
       timestamp: new Date().toISOString(),
     });
 
-    // Setup cleanup on close
     ws.on('close', () => {
       this.unregister(orderId, ws);
     });
@@ -55,10 +39,6 @@ export class WebSocketManager {
     });
   }
 
-  /**
-   * Unregister a WebSocket connection.
-   * Cleans up the registry if no connections remain for the order.
-   */
   public unregister(orderId: string, ws: WebSocket): void {
     const clients = this.connections.get(orderId);
     if (!clients) return;
@@ -76,10 +56,6 @@ export class WebSocketManager {
     }
   }
 
-  /**
-   * Send a message to all WebSocket clients connected to a specific order.
-   * Automatically handles connection state checks.
-   */
   public sendToOrder(orderId: string, message: any): void {
     const clients = this.connections.get(orderId);
     if (!clients || clients.size === 0) {
@@ -111,9 +87,6 @@ export class WebSocketManager {
     }
   }
 
-  /**
-   * Broadcast a message to all connected WebSocket clients across all orders.
-   */
   public broadcast(message: any): void {
     const payload = typeof message === 'string' ? message : JSON.stringify(message);
     let totalSent = 0;
@@ -144,16 +117,10 @@ export class WebSocketManager {
     );
   }
 
-  /**
-   * Get count of connections for an order.
-   */
   public getClientCount(orderId: string): number {
     return this.connections.get(orderId)?.size ?? 0;
   }
 
-  /**
-   * Get total number of connected clients across all orders.
-   */
   public getTotalClientCount(): number {
     let total = 0;
     this.connections.forEach((clients) => {
@@ -162,17 +129,10 @@ export class WebSocketManager {
     return total;
   }
 
-  /**
-   * Get total number of orders with connected clients.
-   */
   public getConnectedOrderCount(): number {
     return this.connections.size;
   }
 
-  /**
-   * Close all connections and clear registry.
-   * Used during graceful shutdown.
-   */
   public closeAll(): void {
     let closedCount = 0;
 
@@ -190,5 +150,4 @@ export class WebSocketManager {
   }
 }
 
-// Singleton instance
 export const wsManager = new WebSocketManager();

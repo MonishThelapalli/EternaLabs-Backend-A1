@@ -9,10 +9,6 @@ exports.createQueueConnection = createQueueConnection;
 const ioredis_1 = __importDefault(require("ioredis"));
 const pino_1 = __importDefault(require("pino"));
 const logger = (0, pino_1.default)();
-/**
- * In-memory pub/sub fallback when Redis is unavailable.
- * Stores subscriptions in a Map and broadcasts to all subscribers.
- */
 class InMemoryPubSub {
     constructor() {
         this.subscriptions = new Map();
@@ -66,15 +62,10 @@ class InMemoryPubSub {
     }
 }
 exports.InMemoryPubSub = InMemoryPubSub;
-/**
- * Creates a Redis connection with graceful fallback to in-memory pub/sub.
- * If Redis is unavailable, the system continues working with in-memory storage.
- */
 async function createRedisClient(options = {}) {
     const host = options.host || process.env.REDIS_HOST || '127.0.0.1';
     const port = options.port || parseInt(process.env.REDIS_PORT || '6379', 10);
     const lazyConnect = options.lazyConnect ?? false;
-    // If Redis is disabled via env var, use in-memory immediately
     if (process.env.REDIS_DISABLED === 'true') {
         logger.info('Redis is disabled. Using in-memory pub/sub.');
         return new InMemoryPubSub();
@@ -83,16 +74,14 @@ async function createRedisClient(options = {}) {
         host,
         port,
         lazyConnect,
-        retryStrategy: () => null, // Disable retries to fail fast
+        retryStrategy: () => null,
         enableReadyCheck: false,
         maxRetriesPerRequest: 1,
         connectTimeout: 3000,
     });
-    // Suppress error logging - we'll handle it below
     redis.on('error', (err) => {
         logger.debug({ err }, 'Redis connection error (will use in-memory fallback)');
     });
-    // If not lazy loading, try to connect and verify
     if (!lazyConnect) {
         try {
             await Promise.race([
@@ -108,21 +97,14 @@ async function createRedisClient(options = {}) {
             return new InMemoryPubSub();
         }
     }
-    // For lazy-connect, return redis but monitor first connection
     redis.once('connect', () => {
         logger.info(`Connected to Redis at ${host}:${port}`);
     });
     redis.once('error', () => {
-        // Connection failed, replace with in-memory
         logger.warn(`Could not connect to Redis at ${host}:${port}. Switching to in-memory pub/sub.`);
     });
     return redis;
 }
-/**
- * Creates a queue connection that gracefully falls back to in-memory if Redis is down.
- * Note: BullMQ requires Redis, so this creates a client that can be used for other purposes,
- * but queuing will be limited to in-memory storage.
- */
 async function createQueueConnection(options = {}) {
     const host = options.host || process.env.REDIS_HOST || '127.0.0.1';
     const port = options.port || parseInt(process.env.REDIS_PORT || '6379', 10);

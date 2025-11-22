@@ -4,7 +4,6 @@ const order_entity_1 = require("../models/order.entity");
 describe('Order entity', () => {
     test('Order entity defines required fields', () => {
         expect(order_entity_1.Order).toBeDefined();
-        // verify it's a class
         const instance = new order_entity_1.Order();
         expect(instance).toBeDefined();
     });
