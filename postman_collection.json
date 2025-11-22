@@ -1,0 +1,72 @@
+{
+  "info": {
+    "name": "Order Execution Engine",
+    "description": "Market order execution with DEX routing and WebSocket updates",
+    "version": "1.0.0",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Execute Market Order",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "http://localhost:3000/api/orders/execute",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "3000",
+          "path": ["api", "orders", "execute"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"orderType\": \"market\",\n  \"tokenIn\": \"SOL\",\n  \"tokenOut\": \"USDC\",\n  \"amount\": 100,\n  \"slippage\": 0.05\n}"
+        }
+      },
+      "response": [
+        {
+          "name": "Success",
+          "originalRequest": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderType\": \"market\",\n  \"tokenIn\": \"SOL\",\n  \"tokenOut\": \"USDC\",\n  \"amount\": 100,\n  \"slippage\": 0.05\n}"
+            },
+            "url": {
+              "raw": "http://localhost:3000/api/orders/execute",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3000",
+              "path": ["api", "orders", "execute"]
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "header": [],
+          "body": "{\n  \"orderId\": \"550e8400-e29b-41d4-a716-446655440000\",\n  \"wsUpgrade\": \"ws://localhost:3000/api/orders/status/550e8400-e29b-41d4-a716-446655440000\"\n}"
+        }
+      ]
+    },
+    {
+      "name": "WebSocket Status Stream",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "ws://localhost:3000/api/orders/status/550e8400-e29b-41d4-a716-446655440000",
+          "protocol": "ws",
+          "host": ["localhost"],
+          "port": "3000",
+          "path": ["api", "orders", "status", "550e8400-e29b-41d4-a716-446655440000"]
+        }
+      },
+      "response": []
+    }
+  ]
+}

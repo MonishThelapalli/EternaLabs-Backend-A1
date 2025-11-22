@@ -1,0 +1,100 @@
+{
+  "info": {
+    "_postman_id": "websocket-order-streaming",
+    "name": "WebSocket Order Streaming",
+    "description": "Real-time order status streaming with WebSocket",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Create Order",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"tokenIn\": \"SOL\",\n  \"tokenOut\": \"USDC\",\n  \"amount\": 10,\n  \"slippage\": 0.5\n}"
+        },
+        "url": {
+          "raw": "http://localhost:3000/api/orders/execute",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "3000",
+          "path": ["api", "orders", "execute"]
+        },
+        "description": "Creates a new order and enqueues it for processing.\nReturns orderId and WebSocket URL for real-time monitoring."
+      },
+      "response": []
+    },
+    {
+      "name": "2. Get Order Status (REST)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:3000/api/orders/status/{{orderId}}",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "3000",
+          "path": ["api", "orders", "status", "{{orderId}}"]
+        },
+        "description": "Gets the current status of an order via REST endpoint.\nUse {{orderId}} from step 1 response.\nNote: WebSocket provides real-time updates, REST is for periodic checks."
+      },
+      "response": []
+    },
+    {
+      "name": "3. Monitor Order (WebSocket)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Connection",
+            "value": "Upgrade"
+          },
+          {
+            "key": "Upgrade",
+            "value": "websocket"
+          }
+        ],
+        "url": {
+          "raw": "ws://localhost:3000/api/orders/status/{{orderId}}",
+          "protocol": "ws",
+          "host": ["localhost"],
+          "port": "3000",
+          "path": ["api", "orders", "status", "{{orderId}}"]
+        },
+        "description": "WebSocket connection for real-time order monitoring.\n\nSteps:\n1. Run request 1 first to get orderId\n2. Copy orderId to {{orderId}} variable\n3. Run this request\n4. Click 'Connect' in Postman's WebSocket panel\n5. Watch for real-time messages\n\nExpected Messages:\n- connection: Connection established\n- subscribed: Listening to updates\n- routing: Fetching quotes (progress 10-30%)\n- building: Building transaction (progress 50-70%)\n- submitted: Submitting to chain (progress 75-90%)\n- confirmed: Success with txHash (progress 100%)\n\nOR\n- failed: Processing failed"
+      },
+      "response": []
+    },
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:3000/health",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "3000",
+          "path": ["health"]
+        },
+        "description": "Health check endpoint.\nReturns server status and WebSocket connection stats."
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "key": "orderId",
+      "value": "550e8400-e29b-41d4-a716-446655440000",
+      "type": "string",
+      "description": "Order ID from step 1 response. Copy and paste from 'Create Order' response."
+    }
+  ]
+}

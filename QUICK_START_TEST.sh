@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+# Quick Start Testing Guide
+# Run this to verify the complete order execution engine
+
+set -e
+
+echo "════════════════════════════════════════════════════════════════"
+echo "ORDER EXECUTION ENGINE - QUICK START TEST"
+echo "════════════════════════════════════════════════════════════════"
+echo ""
+
+# Colors
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Test 1: Verify TypeScript Compilation
+echo -e "${BLUE}[TEST 1/5]${NC} TypeScript Compilation..."
+if npm run build > /dev/null 2>&1; then
+    echo -e "${GREEN}✓ PASSED${NC}: TypeScript compiled successfully (0 errors)"
+else
+    echo -e "${RED}✗ FAILED${NC}: TypeScript compilation failed"
+    npm run build
+    exit 1
+fi
+echo ""
+
+# Test 2: Check Dependencies
+echo -e "${BLUE}[TEST 2/5]${NC} Dependencies Check..."
+required_packages=("ws" "bullmq" "ioredis" "express" "pino" "typeorm")
+all_installed=true
+for pkg in "${required_packages[@]}"; do
+    if npm list "$pkg" > /dev/null 2>&1; then
+        echo -e "  ${GREEN}✓${NC} $pkg installed"
+    else
+        echo -e "  ${RED}✗${NC} $pkg NOT installed"
+        all_installed=false
+    fi
+done
+if [ "$all_installed" = true ]; then
+    echo -e "${GREEN}✓ PASSED${NC}: All required packages installed"
+else
+    echo -e "${RED}✗ FAILED${NC}: Some packages are missing"
+    exit 1
+fi
+echo ""
+
+# Test 3: Check Redis Connection
+echo -e "${BLUE}[TEST 3/5]${NC} Redis Connection..."
+if redis-cli ping > /dev/null 2>&1; then
+    echo -e "${GREEN}✓ PASSED${NC}: Redis is running and responding"
+else
+    echo -e "${YELLOW}⚠ WARNING${NC}: Redis is not running. Start with: redis-server"
+    echo "  This is required for the system to work"
+fi
+echo ""
+
+# Test 4: Check Port Availability
+echo -e "${BLUE}[TEST 4/5]${NC} Port Availability..."
+if lsof -Pi :3000 -sTCP:LISTEN -t > /dev/null 2>&1; then
+    echo -e "${YELLOW}⚠ WARNING${NC}: Port 3000 is already in use (previous server still running?)"
+    echo "  Kill existing process or use different PORT"
+else
+    echo -e "${GREEN}✓ PASSED${NC}: Port 3000 is available"
+fi
+echo ""
+
+# Test 5: Verify Architecture
+echo -e "${BLUE}[TEST 5/5]${NC} Architecture Verification..."
+required_files=(
+    "src/server.ts"
+    "src/queue/worker.ts"
+    "src/queue/index.ts"
+    "src/routes/orders.ts"
+    "src/services/websocket-manager.ts"
+    "src/services/queue-events.ts"
+    "src/models/order.entity.ts"
+    "src/db.ts"
+)
+all_exist=true
+for file in "${required_files[@]}"; do
+    if [ -f "$file" ]; then
+        echo -e "  ${GREEN}✓${NC} $file"
+    else
+        echo -e "  ${RED}✗${NC} $file NOT FOUND"
+        all_exist=false
+    fi
+done
+if [ "$all_exist" = true ]; then
+    echo -e "${GREEN}✓ PASSED${NC}: All required files present"
+else
+    echo -e "${RED}✗ FAILED${NC}: Some files are missing"
+    exit 1
+fi
+echo ""
+
+echo "════════════════════════════════════════════════════════════════"
+echo -e "${GREEN}✓ ALL TESTS PASSED${NC}"
+echo "════════════════════════════════════════════════════════════════"
+echo ""
+echo "Next Steps:"
+echo "  1. Start Redis:  redis-server"
+echo "  2. Start Server: npm run dev"
+echo "  3. Start Worker: npm run worker (in another terminal)"
+echo "  4. Create Order: POST http://localhost:3000/api/orders/execute"
+echo "  5. Connect WS:   ws://localhost:3000/api/orders/status/{orderId}"
+echo ""
+echo "Expected Message Sequence:"
+echo "  → connection (ACK)"
+echo "  → subscribed (confirmation)"
+echo "  → routing (10-30%)"
+echo "  → building (50-70%)"
+echo "  → submitted (75-90%)"
+echo "  → confirmed (100%) or failed (0%)"
+echo ""

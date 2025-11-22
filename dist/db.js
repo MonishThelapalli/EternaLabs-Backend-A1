@@ -1,0 +1,32 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.AppDataSource = void 0;
+require("reflect-metadata");
+const typeorm_1 = require("typeorm");
+const order_entity_1 = require("./models/order.entity");
+function getDataSourceConfig() {
+    // Check for SQLite (used in dev/test). Default to sqlite for local dev
+    const dbType = process.env.DB_TYPE || 'sqlite';
+    const isSqlite = dbType === 'sqlite' || process.env.DB_NAME === ':memory:';
+    if (isSqlite) {
+        return {
+            type: 'sqlite',
+            database: process.env.DB_NAME || ':memory:',
+            synchronize: true,
+            logging: false,
+            entities: [order_entity_1.Order],
+        };
+    }
+    return {
+        type: 'postgres',
+        database: process.env.DB_NAME || 'orderdb',
+        host: process.env.DB_HOST || '127.0.0.1',
+        port: process.env.DB_PORT ? parseInt(process.env.DB_PORT, 10) : 5432,
+        username: process.env.DB_USER || 'postgres',
+        password: process.env.DB_PASS || 'postgres',
+        synchronize: true,
+        logging: false,
+        entities: [order_entity_1.Order],
+    };
+}
+exports.AppDataSource = new typeorm_1.DataSource(getDataSourceConfig());

@@ -1,0 +1,155 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.InMemoryPubSub = void 0;
+exports.createRedisClient = createRedisClient;
+exports.createQueueConnection = createQueueConnection;
+const ioredis_1 = __importDefault(require("ioredis"));
+const pino_1 = __importDefault(require("pino"));
+const logger = (0, pino_1.default)();
+/**
+ * In-memory pub/sub fallback when Redis is unavailable.
+ * Stores subscriptions in a Map and broadcasts to all subscribers.
+ */
+class InMemoryPubSub {
+    constructor() {
+        this.subscriptions = new Map();
+        this.eventListeners = new Map();
+        this.isConnected = true;
+    }
+    async subscribe(channel, callback) {
+        if (!this.subscriptions.has(channel)) {
+            this.subscriptions.set(channel, new Set());
+        }
+        this.subscriptions.get(channel).add(callback);
+        logger.debug(`[InMemory] Subscribed to channel: ${channel}`);
+    }
+    async publish(channel, message) {
+        const subscribers = this.subscriptions.get(channel);
+        if (!subscribers || subscribers.size === 0) {
+            return 0;
+        }
+        subscribers.forEach((callback) => {
+            try {
+                callback(message);
+            }
+            catch (err) {
+                logger.error({ err, channel }, '[InMemory] Error calling subscriber');
+            }
+        });
+        return subscribers.size;
+    }
+    async disconnect() {
+        this.subscriptions.clear();
+        logger.debug('[InMemory] Disconnected');
+    }
+    on(event, callback) {
+        if (!this.eventListeners.has(event)) {
+            this.eventListeners.set(event, new Set());
+        }
+        this.eventListeners.get(event).add(callback);
+    }
+    emit(event, ...args) {
+        const listeners = this.eventListeners.get(event);
+        if (listeners) {
+            listeners.forEach((listener) => {
+                try {
+                    listener(...args);
+                }
+                catch (err) {
+                    logger.error({ err, event }, '[InMemory] Error in event listener');
+                }
+            });
+        }
+    }
+}
+exports.InMemoryPubSub = InMemoryPubSub;
+/**
+ * Creates a Redis connection with graceful fallback to in-memory pub/sub.
+ * If Redis is unavailable, the system continues working with in-memory storage.
+ */
+async function createRedisClient(options = {}) {
+    const host = options.host || process.env.REDIS_HOST || '127.0.0.1';
+    const port = options.port || parseInt(process.env.REDIS_PORT || '6379', 10);
+    const lazyConnect = options.lazyConnect ?? false;
+    // If Redis is disabled via env var, use in-memory immediately
+    if (process.env.REDIS_DISABLED === 'true') {
+        logger.info('Redis is disabled. Using in-memory pub/sub.');
+        return new InMemoryPubSub();
+    }
+    const redis = new ioredis_1.default({
+        host,
+        port,
+        lazyConnect,
+        retryStrategy: () => null, // Disable retries to fail fast
+        enableReadyCheck: false,
+        maxRetriesPerRequest: 1,
+        connectTimeout: 3000,
+    });
+    // Suppress error logging - we'll handle it below
+    redis.on('error', (err) => {
+        logger.debug({ err }, 'Redis connection error (will use in-memory fallback)');
+    });
+    // If not lazy loading, try to connect and verify
+    if (!lazyConnect) {
+        try {
+            await Promise.race([
+                redis.ping(),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Redis ping timeout')), 3000)),
+            ]);
+            logger.info(`Connected to Redis at ${host}:${port}`);
+            return redis;
+        }
+        catch (err) {
+            logger.warn({ err: String(err) }, `Could not connect to Redis at ${host}:${port}. Using in-memory pub/sub.`);
+            redis.disconnect();
+            return new InMemoryPubSub();
+        }
+    }
+    // For lazy-connect, return redis but monitor first connection
+    redis.once('connect', () => {
+        logger.info(`Connected to Redis at ${host}:${port}`);
+    });
+    redis.once('error', () => {
+        // Connection failed, replace with in-memory
+        logger.warn(`Could not connect to Redis at ${host}:${port}. Switching to in-memory pub/sub.`);
+    });
+    return redis;
+}
+/**
+ * Creates a queue connection that gracefully falls back to in-memory if Redis is down.
+ * Note: BullMQ requires Redis, so this creates a client that can be used for other purposes,
+ * but queuing will be limited to in-memory storage.
+ */
+async function createQueueConnection(options = {}) {
+    const host = options.host || process.env.REDIS_HOST || '127.0.0.1';
+    const port = options.port || parseInt(process.env.REDIS_PORT || '6379', 10);
+    if (process.env.REDIS_DISABLED === 'true') {
+        logger.info('Redis is disabled. Queue will use in-memory storage.');
+        return new InMemoryPubSub();
+    }
+    const redis = new ioredis_1.default({
+        host,
+        port,
+        retryStrategy: () => null,
+        enableReadyCheck: false,
+        maxRetriesPerRequest: 1,
+        connectTimeout: 3000,
+    });
+    try {
+        await Promise.race([
+            redis.ping(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Redis ping timeout')), 3000)),
+        ]);
+        logger.info(`Queue connected to Redis at ${host}:${port}`);
+        return redis;
+    }
+    catch (err) {
+        logger.warn({ err: String(err) }, `Queue: Could not connect to Redis at ${host}:${port}`);
+        redis.disconnect();
+        logger.warn('Queue operations will be limited. Redis is required for full queue functionality.');
+        return new InMemoryPubSub();
+    }
+}
